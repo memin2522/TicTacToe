@@ -1,7 +1,16 @@
-import { BOARD_SIZE, COMPUTER_PLAYER, GameStatus, HUMAN_PLAYER, OPEN_SPOT } from "../constants/tic-tac-toe";
+import { BOARD_SIZE, COMPUTER_PLAYER, Difficulty, GameStatus, HUMAN_PLAYER, OPEN_SPOT } from "../constants/tic-tac-toe";
 
 export class TicTacToeEngine {
     private board = Array(BOARD_SIZE).fill(OPEN_SPOT);
+    private currentDifficulty: Difficulty = Difficulty.EASY;
+
+    setDifficulty(difficulty: Difficulty) {
+        this.currentDifficulty = difficulty;
+    }
+
+    getDifficulty(): Difficulty {
+        return this.currentDifficulty;
+    }
 
     getBoardCopy() {
         return [...this.board];
@@ -13,8 +22,7 @@ export class TicTacToeEngine {
         }
     }
 
-    getComputerMove(): number {
-        //Search for a Winning Move
+    searchWinningMove(): number | null {
         for (let i = 0; i < BOARD_SIZE; i++) {
             if (this.board[i] !== HUMAN_PLAYER && this.board[i] !== COMPUTER_PLAYER) {
                 this.board[i] = COMPUTER_PLAYER;
@@ -26,8 +34,10 @@ export class TicTacToeEngine {
                 }
             }
         }
+        return null;
+    }
 
-        //Search for a Blocking Move
+    searchBlockingMove(): number | null {
         for (let i = 0; i < BOARD_SIZE; i++) {
             if (this.board[i] !== HUMAN_PLAYER && this.board[i] !== COMPUTER_PLAYER) {
                 this.board[i] = HUMAN_PLAYER;
@@ -39,14 +49,41 @@ export class TicTacToeEngine {
                 }
             }
         }
+        return null;
+    }
 
-        //Random Move
+    getRandomMove(): number {
         let move: number;
         do {
             move = Math.floor(Math.random() * BOARD_SIZE);
         } while (this.board[move] === HUMAN_PLAYER || this.board[move] === COMPUTER_PLAYER);
 
         return move;
+    }
+
+
+    getComputerMove(): number {
+        if (this.currentDifficulty === Difficulty.MEDIUM) {
+            const blockingMove = this.searchBlockingMove();
+            if (blockingMove !== null) {
+                return blockingMove;
+            }
+            return this.getRandomMove();
+            
+        } else if (this.currentDifficulty === Difficulty.HARD) {
+            const winningMove = this.searchWinningMove();
+            if (winningMove !== null) {
+                return winningMove;
+            }
+
+            const blockingMove = this.searchBlockingMove();
+            if (blockingMove !== null) {
+                return blockingMove;
+            }
+
+            return this.getRandomMove();
+        }
+        return this.getRandomMove(); // Default case, should not reach here
     }
 
     checkForWinner(): GameStatus {

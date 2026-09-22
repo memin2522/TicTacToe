@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { COMPUTER_PLAYER, GameStatus, HUMAN_PLAYER, } from "../constants/tic-tac-toe";
+import { COMPUTER_PLAYER, Difficulty, GameStatus, HUMAN_PLAYER } from "../constants/tic-tac-toe";
 import { TicTacToeEngine } from "./tic-tac-toe-engine";
 
-const COMPUTER_MOVE_DELAY = 0;
+const COMPUTER_MOVE_DELAY: Record<Difficulty, number> = {
+    [Difficulty.EASY]: 900,
+    [Difficulty.MEDIUM]: 500,
+    [Difficulty.HARD]: 200,
+};
 
 export function useTicTacToe() {
     const engineRef = useRef<TicTacToeEngine>(new TicTacToeEngine());
@@ -11,6 +15,7 @@ export function useTicTacToe() {
     const [board, setBoard] = useState(() => engineRef.current.getBoardCopy());
     const [status, setStatus] = useState<GameStatus>(GameStatus.IN_PROGRESS);
     const [isHumanTurn, setIsHumanTurn] = useState(true);
+    const [difficulty, setDifficulty] = useState(engineRef.current.getDifficulty());
 
     useEffect(() => {
         return () => {
@@ -47,7 +52,8 @@ export function useTicTacToe() {
             }
 
             setIsHumanTurn(false);
-            timeoutRef.current = setTimeout(makeComputerMove, COMPUTER_MOVE_DELAY);
+            const delay = COMPUTER_MOVE_DELAY[engine.getDifficulty()];
+            timeoutRef.current = setTimeout(makeComputerMove, delay);
         },
         [isHumanTurn, status, makeComputerMove]
     );
@@ -60,5 +66,10 @@ export function useTicTacToe() {
         setIsHumanTurn(true);
     }, []);
 
-    return { board, status, isHumanTurn, onCellClicked, resetGame };
+    const changeDifficulty = useCallback((next: Difficulty) => {
+        engineRef.current.setDifficulty(next);
+        setDifficulty(next);
+    }, []);
+
+    return { board, status, isHumanTurn, onCellClicked, resetGame, changeDifficulty, difficulty };
 }
