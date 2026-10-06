@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { COMPUTER_PLAYER, Difficulty, GameStatus, HUMAN_PLAYER } from "../constants/tic-tac-toe";
 import { TicTacToeEngine } from "./tic-tac-toe-engine";
+import { useGameSounds } from "./use-game-sound";
 
 const COMPUTER_MOVE_DELAY: Record<Difficulty, number> = {
     [Difficulty.EASY]: 900,
@@ -11,6 +12,7 @@ const COMPUTER_MOVE_DELAY: Record<Difficulty, number> = {
 export function useTicTacToe() {
     const engineRef = useRef<TicTacToeEngine>(new TicTacToeEngine());
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { playMove, playTie, playVictory, playDefeat } = useGameSounds();
 
     const [board, setBoard] = useState(() => engineRef.current.getBoardCopy());
     const [status, setStatus] = useState<GameStatus>(GameStatus.IN_PROGRESS);
@@ -27,11 +29,17 @@ export function useTicTacToe() {
         const engine = engineRef.current;
         const move = engine.getComputerMove();
         engine.setMove(COMPUTER_PLAYER, move);
+        playMove();
         setBoard(engine.getBoardCopy());
 
         const result = engine.checkForWinner();
         if (result !== GameStatus.IN_PROGRESS) {
             setStatus(result);
+            if (result === GameStatus.COMPUTER_WON) {
+                playDefeat();
+            } else if (result === GameStatus.TIE) {
+                playTie();
+            }
         } else {
             setIsHumanTurn(true);
         }
@@ -43,11 +51,17 @@ export function useTicTacToe() {
 
             const engine = engineRef.current;
             engine.setMove(HUMAN_PLAYER, location);
+            playMove();
             setBoard(engine.getBoardCopy());
 
             const result = engine.checkForWinner();
             if (result !== GameStatus.IN_PROGRESS) {
                 setStatus(result);
+                if (result === GameStatus.HUMAN_WON) {
+                    playVictory();
+                } else if (result === GameStatus.TIE) {
+                    playTie();
+                }
                 return;
             }
 
