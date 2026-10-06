@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { COMPUTER_PLAYER, Difficulty, GameStatus, HUMAN_PLAYER } from "../constants/tic-tac-toe";
 import { TicTacToeEngine } from "./tic-tac-toe-engine";
@@ -9,6 +10,14 @@ const COMPUTER_MOVE_DELAY: Record<Difficulty, number> = {
     [Difficulty.HARD]: 200,
 };
 
+const SCORES_STORAGE_KEY = "tic-tac-toe:scores";
+
+interface StoredScores {
+    humanWins: number;
+    computerWins: number;
+    ties: number;
+}
+
 export function useTicTacToe() {
     const engineRef = useRef<TicTacToeEngine>(new TicTacToeEngine());
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -19,10 +28,44 @@ export function useTicTacToe() {
     const [isHumanTurn, setIsHumanTurn] = useState(true);
     const [difficulty, setDifficulty] = useState(engineRef.current.getDifficulty());
 
+    const [humanWins, setHumanWins] = useState(0);
+    const [computerWins, setComputerWins] = useState(0);
+    const [ties, setTies] = useState(0);
+    const [scoresLoaded, setScoresLoaded] = useState(false);
+
+    useEffect(() => {
+        AsyncStorage.getItem(SCORES_STORAGE_KEY)
+            .then((raw) => {
+                if (raw) {
+                    const stored: StoredScores = JSON.parse(raw);
+                    setHumanWins(stored.humanWins);
+                    setComputerWins(stored.computerWins);
+                    setTies(stored.ties);
+                }
+            })
+            .finally(() => setScoresLoaded(true));
+    }, []);
+
+    useEffect(() => {
+        if (!scoresLoaded) return;
+        const scores: StoredScores = { humanWins, computerWins, ties };
+        AsyncStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(scores));
+    }, [humanWins, computerWins, ties, scoresLoaded]);
+
     useEffect(() => {
         return () => {
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
+    }, []);
+
+    const registerResult = useCallback((result: GameStatus) => {
+        if (result === GameStatus.HUMAN_WON) {
+            setHumanWins((wins) => wins + 1);
+        } else if (result === GameStatus.COMPUTER_WON) {
+            setComputerWins((wins) => wins + 1);
+        } else if (result === GameStatus.TIE) {
+            setTies((count) => count + 1);
+        }
     }, []);
 
     const makeComputerMove = useCallback(() => {
@@ -35,6 +78,7 @@ export function useTicTacToe() {
         const result = engine.checkForWinner();
         if (result !== GameStatus.IN_PROGRESS) {
             setStatus(result);
+            registerResult(result);
             if (result === GameStatus.COMPUTER_WON) {
                 playDefeat();
             } else if (result === GameStatus.TIE) {
@@ -43,7 +87,7 @@ export function useTicTacToe() {
         } else {
             setIsHumanTurn(true);
         }
-    }, []);
+    }, [playMove, playDefeat, playTie, registerResult]);
 
     const onCellClicked = useCallback(
         (location: number) => {
@@ -57,6 +101,7 @@ export function useTicTacToe() {
             const result = engine.checkForWinner();
             if (result !== GameStatus.IN_PROGRESS) {
                 setStatus(result);
+                registerResult(result);
                 if (result === GameStatus.HUMAN_WON) {
                     playVictory();
                 } else if (result === GameStatus.TIE) {
@@ -69,7 +114,7 @@ export function useTicTacToe() {
             const delay = COMPUTER_MOVE_DELAY[engine.getDifficulty()];
             timeoutRef.current = setTimeout(makeComputerMove, delay);
         },
-        [isHumanTurn, status, makeComputerMove]
+        [isHumanTurn, status, makeComputerMove, playMove, playVictory, playTie, registerResult]
     );
 
     const resetGame = useCallback(() => {
@@ -85,5 +130,16 @@ export function useTicTacToe() {
         setDifficulty(next);
     }, []);
 
-    return { board, status, isHumanTurn, onCellClicked, resetGame, changeDifficulty, difficulty };
+    return {
+        board,
+        status,
+        isHumanTurn,
+        onCellClicked,
+        resetGame,
+        changeDifficulty,
+        difficulty,
+        humanWins,
+        computerWins,
+        ties,
+    };
 }
