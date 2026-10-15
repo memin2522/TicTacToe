@@ -1,133 +1,103 @@
-// src/app/index.tsx
-
-import { Board } from "@/components/board";
-import { Difficulty, GameStatus } from "@/constants/tic-tac-toe";
-import { useTicTacToe } from "@/hooks/use-tic-tac-toe";
+import { useRouter } from "expo-router";
 import { useState } from "react";
-import {
-    LayoutChangeEvent,
-    Pressable,
-    StyleSheet,
-    Text,
-    useWindowDimensions,
-    View,
-} from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { GameListItem } from "@/components/game-list-item";
+import { useAuth } from "@/hooks/use-auth";
+import { useLobby } from "@/hooks/use-lobby";
+import { createGame, joinGame } from "@/services/games";
 
 const BOARD_BACKGROUND = "#1B1F3B";
 const CHALK_WHITE = "#F5F1E8";
 const CHALK_WHITE_DIM = "#F5F1E866";
 
-const DIFFICULTY_OPTIONS: { label: string; value: Difficulty }[] = [
-    { label: "Easy", value: Difficulty.EASY },
-    { label: "Medium", value: Difficulty.MEDIUM },
-    { label: "Hard", value: Difficulty.HARD },
-];
+export default function MenuScreen() {
+    const router = useRouter();
+    const { uid, error: authError } = useAuth();
+    const { games, loading, error: lobbyError } = useLobby(uid);
 
-export default function GameScreen() {
-    const {
-        board,
-        status,
-        isHumanTurn,
-        difficulty,
-        onCellClicked,
-        resetGame,
-        changeDifficulty,
-        humanWins,
-        computerWins,
-        ties,
-    } = useTicTacToe();
+    const [creating, setCreating] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
+    const [joining, setJoining] = useState(false);
 
-    const { width, height } = useWindowDimensions();
-    const isLandscape = width > height;
-
-    const [boardAreaSize, setBoardAreaSize] = useState({ width: 0, height: 0 });
-
-    const onBoardAreaLayout = (event: LayoutChangeEvent) => {
-        const { width, height } = event.nativeEvent.layout;
-        setBoardAreaSize({ width, height });
+    const onCreateGame = async () => {
+        if (!uid || creating) return;
+        setCreating(true);
+        setCreateError(null);
+        try {
+            const gameId = await createGame(uid);
+            router.push({ pathname: "/game/[id]", params: { id: gameId } });
+        } catch (e: any) {
+            setCreateError(e?.code ?? String(e));
+        } finally {
+            setCreating(false);
+        }
     };
 
-    const boardSize = Math.min(boardAreaSize.width, boardAreaSize.height);
+    const onGamePress = async (gameId: string, isMine: boolean) => {
+        if (!uid || joining) return;
+        setCreateError(null);
 
-    let statusText: string;
-    switch (status) {
-        case GameStatus.TIE:
-            statusText = "It's a tie.";
-            break;
-        case GameStatus.HUMAN_WON:
-            statusText = "You win!";
-            break;
-        case GameStatus.COMPUTER_WON:
-            statusText = "Computer wins!";
-            break;
-        default:
-            statusText = isHumanTurn ? "Your turn" : "Computer is thinking…";
-    }
+        if (isMine) {
+            router.push({ pathname: "/game/[id]", params: { id: gameId } });
+            return;
+        }
+
+        setJoining(true);
+        try {
+            await joinGame(gameId, uid);
+            router.push({ pathname: "/game/[id]", params: { id: gameId } });
+        } catch (e: any) {
+            setCreateError(e?.message ?? String(e));
+        } finally {
+            setJoining(false);
+        }
+    };
+
+    const errorText = authError ?? lobbyError ?? createError;
 
     return (
         <View style={styles.container}>
-            <SafeAreaView
-                style={[styles.safeArea, isLandscape && styles.safeAreaLandscape]}
-            >
-                <View style={styles.boardSection} onLayout={onBoardAreaLayout}>
-                    {boardSize > 0 && (
-                        <Board
-                            size={boardSize}
-                            board={board}
-                            status={status}
-                            onCellPress={onCellClicked}
+            <SafeAreaView style={styles.safeArea}>
+                <Text style={styles.title}>Tic Tac Toe</Text>
+
+                <Pressable style={styles.button} onPress={() => router.push("/local")}>
+                    <Text style={styles.buttonText}>Play Against CPU</Text>
+                </Pressable>
+
+                <Text style={styles.sectionTitle}>Online Games</Text>
+
+                <Pressable
+                    style={[styles.button, (!uid || creating) && styles.buttonDisabled]}
+                    onPress={onCreateGame}
+                    disabled={!uid || creating}
+                >
+                    <Text style={styles.buttonText}>
+                        {creating ? "Creating…" : "Create Game"}
+                    </Text>
+                </Pressable>
+
+                {errorText && <Text style={styles.errorText}>Error: {errorText}</Text>}
+
+                <FlatList
+                    style={styles.list}
+                    contentContainerStyle={styles.listContent}
+                    data={games}
+                    keyExtractor={(game) => game.id}
+                    renderItem={({ item }) => (
+                        <GameListItem
+                            game={item}
+                            isMine={item.hostId === uid}
+                            disabled={!uid || joining}
+                            onPress={() => onGamePress(item.id, item.hostId === uid)}
                         />
                     )}
-                </View>
-
-                <View style={styles.infoSection}>
-                    <Text style={styles.status}>{statusText}</Text>
-
-                    <View style={styles.scoreRow}>
-                        <View style={styles.scoreItem}>
-                            <Text style={styles.scoreLabel}>You</Text>
-                            <Text style={styles.scoreValue}>{humanWins}</Text>
-                        </View>
-                        <View style={styles.scoreItem}>
-                            <Text style={styles.scoreLabel}>Ties</Text>
-                            <Text style={styles.scoreValue}>{ties}</Text>
-                        </View>
-                        <View style={styles.scoreItem}>
-                            <Text style={styles.scoreLabel}>CPU</Text>
-                            <Text style={styles.scoreValue}>{computerWins}</Text>
-                        </View>
-                    </View>
-
-                    <View style={styles.difficultyRow}>
-                        {DIFFICULTY_OPTIONS.map((option) => {
-                            const isSelected = option.value === difficulty;
-                            return (
-                                <Pressable
-                                    key={option.value}
-                                    onPress={() => changeDifficulty(option.value)}
-                                    style={[
-                                        styles.difficultyButton,
-                                        isSelected && styles.difficultyButtonSelected,
-                                    ]}
-                                >
-                                    <Text
-                                        style={[
-                                            styles.difficultyText,
-                                            isSelected && styles.difficultyTextSelected,
-                                        ]}
-                                    >
-                                        {option.label}
-                                    </Text>
-                                </Pressable>
-                            );
-                        })}
-                    </View>
-
-                    <Pressable onPress={resetGame} style={styles.resetButton}>
-                        <Text style={styles.resetText}>Reset</Text>
-                    </Pressable>
-                </View>
+                    ListEmptyComponent={
+                        <Text style={styles.emptyText}>
+                            {loading ? "Loading games…" : "No games available"}
+                        </Text>
+                    }
+                />
             </SafeAreaView>
         </View>
     );
@@ -141,74 +111,49 @@ const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
         padding: 24,
-        gap: 24,
+        gap: 16,
     },
-    safeAreaLandscape: {
-        flexDirection: "row",
-        gap: 32,
-    },
-    boardSection: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    infoSection: {
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    status: {
-        fontSize: 22,
-        fontWeight: "600",
-        color: CHALK_WHITE,
-        marginBottom: 24,
-    },
-    scoreRow: {
-        flexDirection: "row",
-        gap: 24,
-        marginBottom: 24,
-    },
-    scoreItem: {
-        alignItems: "center",
-    },
-    scoreLabel: {
-        color: CHALK_WHITE_DIM,
-        fontSize: 12,
-        textTransform: "uppercase",
-    },
-    scoreValue: {
-        color: CHALK_WHITE,
-        fontSize: 24,
+    title: {
+        fontSize: 40,
         fontWeight: "700",
+        color: CHALK_WHITE,
+        textAlign: "center",
+        marginBottom: 8,
     },
-    difficultyRow: {
-        flexDirection: "row",
-        marginBottom: 24,
-        gap: 8,
+    sectionTitle: {
+        color: CHALK_WHITE_DIM,
+        fontSize: 13,
+        textTransform: "uppercase",
+        marginTop: 8,
     },
-    difficultyButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 14,
-        borderRadius: 6,
+    button: {
+        paddingVertical: 14,
+        borderRadius: 8,
         borderWidth: 1,
         borderColor: CHALK_WHITE_DIM,
+        alignItems: "center",
     },
-    difficultyButtonSelected: {
-        backgroundColor: CHALK_WHITE,
-        borderColor: CHALK_WHITE,
+    buttonDisabled: {
+        opacity: 0.4,
     },
-    difficultyText: {
+    buttonText: {
         color: CHALK_WHITE,
-        fontSize: 14,
-        fontWeight: "500",
+        fontSize: 18,
+        fontWeight: "600",
     },
-    difficultyTextSelected: {
-        color: BOARD_BACKGROUND,
+    errorText: {
+        color: "#FF6B5B",
+        fontSize: 13,
     },
-    resetButton: {
-        padding: 8,
+    list: {
+        flex: 1,
     },
-    resetText: {
-        color: CHALK_WHITE,
-        fontSize: 16,
+    listContent: {
+        gap: 10,
+    },
+    emptyText: {
+        color: CHALK_WHITE_DIM,
+        textAlign: "center",
+        marginTop: 24,
     },
 });
